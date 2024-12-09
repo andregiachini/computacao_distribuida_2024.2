@@ -3,112 +3,112 @@ import threading
 import time
 import sys
 
-class DistributedMutexProcess:
-    def __init__(self, process_id, port, peers):
-        self.process_id = process_id
-        self.port = port
+class ProcessoMutexDistribuido:
+    def __init__(self, id_processo, porta, peers):
+        self.id_processo = id_processo
+        self.porta = porta
         self.peers = peers
-        self.request_queue = []
-        self.in_critical_section = False
-        self.ok_count = 0
+        self.fila_requisicoes = []
+        self.em_secao_critica = False
+        self.contagem_ok = 0
         self.lock = threading.Lock()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(("localhost", self.port))
+        self.sock.bind(("localhost", self.porta))
     
-    def send_message(self, message, peer):
-        self.sock.sendto(message.encode(), peer)
-        print(f"[Process {self.process_id}] Sent message: {message} to {peer}")
+    def enviar_mensagem(self, mensagem, par):
+        self.sock.sendto(mensagem.encode(), par)
+        print(f"[Processo {self.id_processo}] Enviou mensagem: {mensagem} para {par}")
 
-    def handle_request(self, requester_id, requester_port):
+    def tratar_requisicao(self, id_requisitante, porta_requisitante):
         with self.lock:
-            if self.in_critical_section or self.request_queue:
-                self.request_queue.append((requester_id, requester_port))
-                print(f"[Process {self.process_id}] Request from {requester_id} added to queue.")
+            if self.em_secao_critica or self.fila_requisicoes:
+                self.fila_requisicoes.append((id_requisitante, porta_requisitante))
+                print(f"[Processo {self.id_processo}] Requisição de {id_requisitante} adicionada à fila.")
             else:
                 time.sleep(0.5)
-                self.send_message("OK", ("localhost", requester_port))
-                print(f"[Process {self.process_id}] Sent OK to {requester_id}.")
+                self.enviar_mensagem("OK", ("localhost", porta_requisitante))
+                print(f"[Processo {self.id_processo}] Enviou OK para {id_requisitante}.")
 
-    def enter_critical_section(self):
+    def entrar_secao_critica(self):
         with self.lock:
-            self.in_critical_section = True
-            print(f"[Process {self.process_id}] Entering critical section.")
+            self.em_secao_critica = True
+            print(f"[Processo {self.id_processo}] Entrando na seção crítica.")
     
-    def exit_critical_section(self):
+    def sair_secao_critica(self):
         with self.lock:
-            self.in_critical_section = False
-            print(f"[Process {self.process_id}] Exiting critical section.")
-            while self.request_queue:
-                requester_id, requester_port = self.request_queue.pop(0)
+            self.em_secao_critica = False
+            print(f"[Processo {self.id_processo}] Saindo da seção crítica.")
+            while self.fila_requisicoes:
+                id_requisitante, porta_requisitante = self.fila_requisicoes.pop(0)
                 time.sleep(0.5)
-                self.send_message("OK", ("localhost", requester_port))
-                print(f"[Process {self.process_id}] Sent OK to {requester_id} from queue.")
-        for peer_host, peer_port in self.peers:
-            self.send_message(f"RELEASE {self.process_id}", (peer_host, peer_port))
-            print(f"[Process {self.process_id}] Sent RELEASE to {peer_host}:{peer_port}.")
+                self.enviar_mensagem("OK", ("localhost", porta_requisitante))
+                print(f"[Processo {self.id_processo}] Enviou OK para {id_requisitante} da fila.")
+        for host_par, porta_par in self.peers:
+            self.enviar_mensagem(f"RELEASE {self.id_processo}", (host_par, porta_par))
+            print(f"[Processo {self.id_processo}] Enviou RELEASE para {host_par}:{porta_par}.")
             time.sleep(0.5)
     
-    def request_critical_section(self):
-        print(f"[Process {self.process_id}] Requesting critical section.")
-        self.ok_count = 0
-        for peer_host, peer_port in self.peers:
-            self.send_message(f"REQUEST {self.process_id} {self.port}", (peer_host, peer_port))
-            print(f"[Process {self.process_id}] Sent request to {peer_host}:{peer_port}")
+    def request_secao_critica(self):
+        print(f"[Processo {self.id_processo}] Requisitando seção crítica.")
+        self.contagem_ok = 0
+        for host_par, porta_par in self.peers:
+            self.enviar_mensagem(f"REQUEST {self.id_processo} {self.porta}", (host_par, porta_par))
+            print(f"[Processo {self.id_processo}] Enviou requisição para {host_par}:{porta_par}")
             time.sleep(0.5)
         
-        print(f"[Process {self.process_id}] Waiting for OKs from peers...")
+        print(f"[Processo {self.id_processo}] Aguardando OKs dos peers...")
         while True:
             with self.lock:
-                if self.ok_count >= len(self.peers):
+                if self.contagem_ok >= len(self.peers):
                     break
             time.sleep(0.1)
         
-        self.enter_critical_section()
+        self.entrar_secao_critica()
 
     def listener(self):
         while True:
-            data, addr = self.sock.recvfrom(1024)
-            message = data.decode()
-            print(f"[Process {self.process_id}] Listener received message: {message} from {addr}")
-            parts = message.split()
-            if parts[0] == "REQUEST":
-                requester_id = int(parts[1])
-                requester_port = int(parts[2])
-                self.handle_request(requester_id, requester_port)
-            elif parts[0] == "RELEASE":
+            dados, addr = self.sock.recvfrom(1024)
+            mensagem = dados.decode()
+            print(f"[Processo {self.id_processo}] mensagem recebida: {mensagem} de {addr}")
+            partes = mensagem.split()
+            if partes[0] == "REQUEST":
+                id_requisitante = int(partes[1])
+                porta_requisitante = int(partes[2])
+                self.tratar_requisicao(id_requisitante, porta_requisitante)
+            elif partes[0] == "RELEASE":
                 with self.lock:
-                    if self.request_queue:
-                        requester_id, requester_port = self.request_queue.pop(0)
+                    if self.fila_requisicoes:
+                        id_requisitante, porta_requisitante = self.fila_requisicoes.pop(0)
                         time.sleep(0.5)
-                        self.send_message("OK", ("localhost", requester_port))
-                        print(f"[Process {self.process_id}] Sent OK to {requester_id} from queue.")
-            elif message == "OK":
+                        self.enviar_mensagem("OK", ("localhost", porta_requisitante))
+                        print(f"[Processo {self.id_processo}] Enviou OK para {id_requisitante} da fila.")
+            elif mensagem == "OK":
                 with self.lock:
-                    self.ok_count += 1
+                    self.contagem_ok += 1
 
-    def run(self):
+    def executar(self):
         threading.Thread(target=self.listener, daemon=True).start()
         while True:
-            command = input(f"[Process {self.process_id}] Enter 'request' to request critical section or 'exit' to quit: ").strip()
-            if command.lower() == "request":
-                self.request_critical_section()
+            comando = input(f"[Processo {self.id_processo}] Digite 'request' para requisitar seção crítica ou 'exit' para sair: ").strip()
+            if comando.lower() == "request":
+                self.request_secao_critica()
                 time.sleep(3)
-                self.exit_critical_section()
-            elif command.lower() == "exit":
-                print(f"[Process {self.process_id}] Exiting.")
+                self.sair_secao_critica()
+            elif comando.lower() == "exit":
+                print(f"[Processo {self.id_processo}] Saindo.")
                 break
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python process.py <process_id> <port> <peer1_host>:<peer1_port> ...")
+        print("Uso: python process.py <id_processo> <porta> <host_par1>:<porta_par1> ...")
         sys.exit(1)
 
-    process_id = int(sys.argv[1])
-    port = int(sys.argv[2])
+    id_processo = int(sys.argv[1])
+    porta = int(sys.argv[2])
     peers = []
-    for peer in sys.argv[3:]:
-        host, peer_port = peer.split(":")
-        peers.append((host, int(peer_port)))
+    for par in sys.argv[3:]:
+        host, porta_par = par.split(":")
+        peers.append((host, int(porta_par)))
     
-    process = DistributedMutexProcess(process_id, port, peers)
-    process.run()
+    processo = ProcessoMutexDistribuido(id_processo, porta, peers)
+    processo.executar()
